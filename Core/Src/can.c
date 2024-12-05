@@ -175,8 +175,8 @@ void MX_CAN2_Init(void)
       uint8_t TxData[8] = {0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}; // Example data for CAN2
 
       TxHeader.DLC = 8; // Data length
-      TxHeader.IDE = CAN_ID_STD; // Using standard identifier
-      TxHeader.StdId = 0x524; // Standard identifier of the message for CAN2
+      TxHeader.IDE = CAN_ID_EXT; // Using standard identifier
+      TxHeader.ExtId = 0x524; // Standard identifier of the message for CAN2
       TxHeader.RTR = CAN_RTR_DATA; // Message is a data frame
 
       if (HAL_CAN_AddTxMessage(&hcan2, &TxHeader, TxData, &TxMailbox) != HAL_OK)

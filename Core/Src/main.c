@@ -55,29 +55,139 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void CAN1_CAN2_broadcast(uint32_t can_id, uint8_t* x, uint8_t length) {
+
+    CAN_TxHeaderTypeDef TxHeader;
+    uint32_t TxMailbox;
+    uint8_t TxData[8];
+
+    // Преобразование входящего сообщения от системы управления
+    // id = 0x150 широковещательный запуск/остановка
+    if (can_id == 0x150) {
+        TxHeader.DLC = 8;
+        TxHeader.IDE = CAN_ID_EXT;
+        TxHeader.ExtId = 0x00;
+        TxHeader.RTR = CAN_RTR_DATA;
+
+        if (x[0] == 0x01) {
+            TxData[0] = 0b00010000;
+            TxData[1] = 0x04;
+            TxData[2] = 0x00;
+            TxData[3] = 0x00;
+            TxData[4] = 0x00;
+            TxData[5] = 0x00;
+            TxData[6] = 0x00;
+            TxData[7] = 0x00;
+        } else if (x[0] == 0x00) {
+            TxData[0] = 0b00010000;
+            TxData[1] = 0x04;
+            TxData[2] = 0x00;
+            TxData[3] = 0x00;
+            TxData[4] = 0x00;
+            TxData[5] = 0x00;
+            TxData[6] = 0x00;
+            TxData[7] = 0x01;
+        }
+
+        if (HAL_CAN_AddTxMessage(&hcan2, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+            Error_Handler();
+        }
+
+    }
+
+
+}
+void CAN1_CAN2_individ(uint32_t can_id, uint8_t* x, uint8_t length) {
+
+    CAN_TxHeaderTypeDef TxHeader;
+    uint32_t TxMailbox;
+    uint8_t TxData[8];
+
+    // Преобразование входящего сообщения от системы управления
+     // id = 0x160 + адрес: индивидуальный запуск/остановка
+     //if (can_id >= 0x160 && can_id <= 0x18F) {
+    if ((can_id >= 0x160) & (can_id <= 0x18F)) {//не работает с &&
+         TxHeader.DLC = 8;
+         TxHeader.IDE = CAN_ID_EXT;
+         TxHeader.ExtId = can_id - 0x160 + 1;
+         TxHeader.RTR = CAN_RTR_DATA;
+
+         if (x[0] == 0x01) {
+             TxData[0] = 0b00010000;
+             TxData[1] = 0x04;
+             TxData[2] = 0x00;
+             TxData[3] = 0x00;
+             TxData[4] = 0x00;
+             TxData[5] = 0x00;
+             TxData[6] = 0x00;
+             TxData[7] = 0x00;
+         } else if (x[0] == 0x00) {
+             TxData[0] = 0b00010000;
+             TxData[1] = 0x04;
+             TxData[2] = 0x00;
+             TxData[3] = 0x00;
+             TxData[4] = 0x00;
+             TxData[5] = 0x00;
+             TxData[6] = 0x00;
+             TxData[7] = 0x01;
+         }
+
+         if (HAL_CAN_AddTxMessage(&hcan2, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+             Error_Handler();
+         }
+    }
+}
+
+void CAN1_CAN2_current(uint32_t can_id, uint8_t* x, uint8_t length) {
+
+    CAN_TxHeaderTypeDef TxHeader;
+    uint32_t TxMailbox;
+    uint8_t TxData[8];
+
+    // Преобразование входящего сообщения от системы управления
+     // id = 0x160 + адрес: индивидуальный запуск/остановка
+     //if (can_id >= 0x160 && can_id <= 0x18F) {
+    if ((can_id >= 0x160) & (can_id <= 0x18F)) {//не работает с &&
+         TxHeader.DLC = 8;
+         TxHeader.IDE = CAN_ID_EXT;
+         TxHeader.ExtId = can_id - 0x160 + 1;
+         TxHeader.RTR = CAN_RTR_DATA;
+
+         // Преобразование входящего сообщения от системы управления
+         // Выставка значения тока, мА
+         uint64_t I = (uint64_t)((x[2] << 8) | x[1]);// только грубо
+         uint64_t I_ma = I * 1000 * 0.0146628;//15A - 1023 - FF 03
+         unsigned char byte1 = (I_ma >> 24) & 0xFF;
+         unsigned char byte2 = (I_ma >> 16) & 0xFF;
+         unsigned char byte3 = (I_ma >> 8) & 0xFF;
+         unsigned char byte4 =  I_ma & 0xFF;
+
+         TxData[0] = 0x10;
+         TxData[1] = 0x03;
+         TxData[2] = 0x00;
+         TxData[3] = 0x00;
+
+         TxData[4] = byte1;
+         TxData[5] = byte2;
+         TxData[6] = byte3;
+         TxData[7] = byte4;
+
+         if (HAL_CAN_AddTxMessage(&hcan2, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+             Error_Handler();
+         }
+    }
+}
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
     CAN_RxHeaderTypeDef RxHeader;
     uint8_t RxData[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};  // Example data
     if(HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
     {
-        HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_13);
-
-        CAN_TxHeaderTypeDef TxHeader;
-             uint32_t TxMailbox;
-             uint8_t TxData[8] = {0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}; // Example data for CAN2
-
-             TxHeader.DLC = 8; // Data length
-             TxHeader.IDE = CAN_ID_STD; // Using standard identifier
-             TxHeader.StdId = 0x524; // Standard identifier of the message for CAN2
-             TxHeader.RTR = CAN_RTR_DATA; // Message is a data frame
-
-             if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK)
-             {
-                 // Transmission request Error
-                 Error_Handler();
-             }
-
+         HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_13);
+         CAN1_CAN2_broadcast(RxHeader.StdId, RxData, RxHeader.DLC);// StdId = 0x150
+         CAN1_CAN2_individ(RxHeader.StdId, RxData, RxHeader.DLC);// (can_id >= 0x160 && can_id <= 0x18F)
+         CAN1_CAN2_current(RxHeader.StdId, RxData, RxHeader.DLC);// (can_id >= 0x160 && can_id <= 0x18F)
     }
 }
 void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
