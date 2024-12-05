@@ -55,7 +55,40 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+    CAN_RxHeaderTypeDef RxHeader;
+    uint8_t RxData[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};  // Example data
+    if(HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
+    {
+        HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_13);
 
+        CAN_TxHeaderTypeDef TxHeader;
+             uint32_t TxMailbox;
+             uint8_t TxData[8] = {0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}; // Example data for CAN2
+
+             TxHeader.DLC = 8; // Data length
+             TxHeader.IDE = CAN_ID_STD; // Using standard identifier
+             TxHeader.StdId = 0x524; // Standard identifier of the message for CAN2
+             TxHeader.RTR = CAN_RTR_DATA; // Message is a data frame
+
+             if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+             {
+                 // Transmission request Error
+                 Error_Handler();
+             }
+
+    }
+}
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+    CAN_RxHeaderTypeDef RxHeader;
+    uint8_t RxData[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};  // Example data
+    if(HAL_CAN_GetRxMessage(&hcan2, CAN_RX_FIFO1, &RxHeader, RxData) == HAL_OK)
+    {
+        HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_14);
+    }
+}
 /* USER CODE END 0 */
 
 /**
