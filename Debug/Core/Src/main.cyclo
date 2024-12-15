@@ -1,0 +1,8 @@
+../Core/Src/main.c:59:6:CAN1_CAN2_broadcast	5
+../Core/Src/main.c:101:6:CAN1_CAN2_individ	5
+../Core/Src/main.c:142:6:CAN1_CAN2_current	3
+../Core/Src/main.c:182:6:HAL_CAN_RxFifo0MsgPendingCallback	2
+../Core/Src/main.c:194:6:HAL_CAN_RxFifo1MsgPendingCallback	2
+../Core/Src/main.c:209:5:main	1
+../Core/Src/main.c:260:6:SystemClock_Config	3
+../Core/Src/main.c:309:6:Error_Handler	1
