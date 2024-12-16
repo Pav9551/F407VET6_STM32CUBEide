@@ -21,7 +21,7 @@
 #include "can.h"
 #include "usart.h"
 #include "gpio.h"
-
+#include <stdio.h>  // Стандартная библиотека C
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -200,6 +200,27 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
         HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_14);
     }
 }
+//https://www.waveshare.com/wiki/STM32CubeMX_Tutorial_Series:_USART
+#ifdef __GNUC__
+  /* With GCC/RAISONANCE, small printf (option LD Linker->Libraries->Small printf
+     set to 'Yes') calls __io_putchar() */
+  #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+  #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif /* __GNUC__ */
+/**
+  * @brief  Retargets the C library printf function to the USART.
+  * @param  None
+  * @retval None
+  */
+PUTCHAR_PROTOTYPE
+{
+  /* Place your implementation of fputc here */
+  /* e.g. write a character to the EVAL_COM1 and Loop until the end of transmission */
+  HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 0xFFFF);
+
+  return ch;
+}
 /* USER CODE END 0 */
 
 /**
@@ -235,11 +256,13 @@ int main(void)
   MX_CAN2_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-  const char *message = "Hello, UART!\n";
+  //const char *message = "Hello, UART!\n";
 
   // Отправка сообщения через UART3
-  HAL_UART_Transmit(&huart3, (uint8_t *)message, strlen(message), HAL_MAX_DELAY);
+  //HAL_UART_Transmit(&huart3, (uint8_t *)message, strlen(message), HAL_MAX_DELAY);
 
+
+  printf("\n\r !UART Printf Example: retarget the C library printf function to the UART\n\r");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -299,6 +322,18 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/*#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+
+// Реализация функции вывода
+PUTCHAR_PROTOTYPE
+{
+    // Отправляем одиночный символ через UART
+	extern UART_HandleTypeDef huart3;
+    HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 0xff);
+    return ch;
+}*/
+
 
 /* USER CODE END 4 */
 
