@@ -21,7 +21,7 @@
 #include "can.h"
 #include "usart.h"
 #include "gpio.h"
-#include <stdio.h>  // Стандартная библиотека C
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -208,6 +208,7 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
 #else
   #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
 #endif /* __GNUC__ */
+
 /**
   * @brief  Retargets the C library printf function to the USART.
   * @param  None
@@ -220,6 +221,17 @@ PUTCHAR_PROTOTYPE
   HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 0xFFFF);
 
   return ch;
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == GPIO_PIN_10)
+  {
+	  printf("\n\r Кнопка S1 нажата\n\r");
+    //Код обработки прерывания для PE10
+	  HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_15);
+
+  }
 }
 /* USER CODE END 0 */
 
@@ -263,6 +275,7 @@ int main(void)
 
 
   printf("\n\r !UART Printf Example: retarget the C library printf function to the UART\n\r");
+  printf("\n\r Работает\n\r");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -322,17 +335,6 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-/*#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
-
-// Реализация функции вывода
-PUTCHAR_PROTOTYPE
-{
-    // Отправляем одиночный символ через UART
-	extern UART_HandleTypeDef huart3;
-    HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 0xff);
-    return ch;
-}*/
 
 
 /* USER CODE END 4 */
