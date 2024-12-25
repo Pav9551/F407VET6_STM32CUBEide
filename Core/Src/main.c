@@ -19,12 +19,13 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "can.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "value_struct.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,6 +57,26 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+int32_t hartbeat; // проверка связи с головой
+value_Struct current; //значение тока
+// функции отключения прерываний могут не понадобятся
+// uint32_t - атомарная перезапись
+void DisableIRQ(void) {
+	HAL_NVIC_DisableIRQ(CAN1_RX0_IRQn);
+	HAL_NVIC_DisableIRQ(CAN1_RX1_IRQn);
+	HAL_NVIC_DisableIRQ(TIM2_IRQn);
+	HAL_NVIC_DisableIRQ(EXTI15_10_IRQn);
+	HAL_NVIC_DisableIRQ(USART3_IRQn);
+}
+
+void EnableIRQ(void) {
+	HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
+	HAL_NVIC_EnableIRQ(CAN1_RX1_IRQn);
+	HAL_NVIC_EnableIRQ(TIM2_IRQn);
+	HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+	HAL_NVIC_EnableIRQ(USART3_IRQn);
+}
+
 void CAN1_CAN2_broadcast(uint32_t can_id, uint8_t* x, uint8_t length) {
 
     CAN_TxHeaderTypeDef TxHeader;
@@ -178,26 +199,182 @@ void CAN1_CAN2_current(uint32_t can_id, uint8_t* x, uint8_t length) {
          }
     }
 }
+void CAN1_current_rx(uint32_t can_id, uint8_t* x, uint8_t length,value_Struct *vStruct) {
 
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+    CAN_TxHeaderTypeDef TxHeader;
+    uint32_t TxMailbox;
+    uint8_t TxData[8];
+    uint32_t TRANS = vStruct->TRANSACTION;
+    // Преобразование входящего сообщения от системы управления
+     // id = 0x160 + адрес: индивидуальный запуск/остановка
+     //if (can_id >= 0x160 && can_id <= 0x18F) {
+    if ((can_id >= 0x160) & (can_id <= 0x18F) & (TRANS == 0)) {//
+
+         // Преобразование входящего сообщения от системы управления
+         // Выставка значения тока, мА
+         uint64_t I = (uint64_t)((x[2] << 8) | x[1]);// только грубо
+         uint64_t I_ma = I * 1000 * 0.0146628;//15A - 1023 - FF 03
+         vStruct->ID = (uint32_t)can_id;
+         vStruct->NEW_VALUE = (uint32_t)I_ma;
+         vStruct->TRANSACTION = (uint32_t)0b00000001;// установка состояния - принят новый пакет от головы
+         printValueStruct(&current);
+         printf("transaction started");
+    }
+}
+
+void CAN2_current_tx(value_Struct *vStruct) {
+	CAN_TxHeaderTypeDef TxHeader;
+	uint32_t TxMailbox;
+	uint8_t TxData[8];
+	uint32_t can_id = vStruct->ID;
+	uint32_t TRANS = vStruct->TRANSACTION;
+	uint32_t I_ma = vStruct->NEW_VALUE;
+     // Преобразование входящего сообщения от системы управления
+     // id = 0x160 + адрес: индивидуальный запуск/остановка
+     //if (can_id >= 0x160 && can_id <= 0x18F) {
+    if ((can_id >= 0x160) & (can_id <= 0x18F) & (TRANS == 0b00001)) {//принято новое значение
+         TxHeader.DLC = 8;
+         TxHeader.IDE = CAN_ID_EXT;
+         TxHeader.ExtId = can_id - 0x160 + 1;
+         TxHeader.RTR = CAN_RTR_DATA;
+
+         unsigned char byte1 = (I_ma >> 24) & 0xFF;
+         unsigned char byte2 = (I_ma >> 16) & 0xFF;
+         unsigned char byte3 = (I_ma >> 8) & 0xFF;
+         unsigned char byte4 =  I_ma & 0xFF;
+
+         TxData[0] = 0x10;
+         TxData[1] = 0x03;
+         TxData[2] = 0x00;
+         TxData[3] = 0x00;
+
+         TxData[4] = byte1;
+         TxData[5] = byte2;
+         TxData[6] = byte3;
+         TxData[7] = byte4;
+
+         if (HAL_CAN_AddTxMessage(&hcan2, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+             Error_Handler();
+             //не отправлено сообщение модулю
+         }
+         else{
+        	 vStruct->TRANSACTION = 0b00011; //установка состояния - отправлен новый пакет модулю
+        	 printValueStruct(&current);
+         }
+    }
+}
+
+void CAN2_current_rx(uint32_t can_id, uint8_t* x, uint8_t length,value_Struct *vStruct) {
+
+    CAN_TxHeaderTypeDef TxHeader;
+    uint32_t TxMailbox;
+    uint8_t TxData[8];
+    uint32_t TRANS = vStruct->TRANSACTION;
+    // Преобразование входящего сообщения от системы блока
+    if ((can_id >= 0) & (TRANS == 0b00000011)) {//
+         TxHeader.DLC = 8;
+         TxHeader.IDE = CAN_ID_EXT;
+         TxHeader.ExtId = can_id - 0x160 + 1;
+         TxHeader.RTR = CAN_RTR_DATA;
+         /*********Добавить преобразование тока*******/
+         vStruct->ID = (uint32_t)can_id;
+         vStruct->TRANSACTION = (uint32_t)0b00000111;// установка состояния - принят новый пакет от модуля
+         printValueStruct(&current);
+
+    }
+}
+
+void CAN1_current_tx(value_Struct *vStruct) {
+	CAN_TxHeaderTypeDef TxHeader;
+	uint32_t TxMailbox;
+	uint8_t TxData[8];
+	uint32_t can_id = vStruct->ID;
+	uint32_t TRANS = vStruct->TRANSACTION;
+	uint32_t I_ma = vStruct->NEW_VALUE;
+     // Преобразование входящего сообщения от системы управления
+     // id = 0x160 + адрес: индивидуальный запуск/остановка
+     //if (can_id >= 0x160 && can_id <= 0x18F) {
+    if ((TRANS == 0b00111)) {//принято новое значение
+         TxHeader.DLC = 8;
+         TxHeader.IDE = CAN_ID_STD;
+         TxHeader.ExtId = can_id + 0x190 - 0x160;
+         TxHeader.RTR = CAN_RTR_DATA;
+         uint64_t I = (uint64_t)(I_ma / (1000.0 * 0.0146628));
+         // Разбиение I на x[2] и x[1]
+         TxData[0] = (uint8_t)((I >> 8) & 0xFF);
+         TxData[1] = (uint8_t)(I & 0xFF);
+         TxData[2] = 0x00;
+         TxData[3] = 0x00;
+
+         TxData[4] = 0x00;
+         TxData[5] = 0x00;
+         TxData[6] = 0x00;
+         TxData[7] = 0x00;
+
+         if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+             Error_Handler();
+             //не отправлено сообщение модулю
+         }
+         else{
+        	 vStruct->CUR_VALUE = vStruct->NEW_VALUE;
+        	 vStruct->TRANSACTION = 0b01111; //установка состояния - отправлен новый пакет голове
+        	 printValueStruct(&current);
+        	 vStruct->TRANSACTION = 0b00000; //установка состояния - транзакция завершена
+        	 vStruct->COUTN_TRANS = vStruct->COUTN_TRANS + 1; //счетчик пакетов
+        	 printValueStruct(&current);
+        	 printf("the transaction is completed");
+         }
+    }
+}
+void CAN2_broadcast_stop_all(void) {
+    CAN_TxHeaderTypeDef TxHeader;
+    uint32_t TxMailbox;
+    uint8_t TxData[8];
+    // Преобразование входящего сообщения от системы управления
+    // id = 0x150 широковещательный запуск/остановка
+	TxHeader.DLC = 8;
+	TxHeader.IDE = CAN_ID_EXT;
+	TxHeader.ExtId = 0x00;
+	TxHeader.RTR = CAN_RTR_DATA;
+	TxData[0] = 0b00010000;
+	TxData[1] = 0x04;
+	TxData[2] = 0x00;
+	TxData[3] = 0x00;
+	TxData[4] = 0x00;
+	TxData[5] = 0x00;
+	TxData[6] = 0x00;
+	TxData[7] = 0x01;
+	if (HAL_CAN_AddTxMessage(&hcan2, &TxHeader, TxData, &TxMailbox) != HAL_OK) {
+		Error_Handler();
+	}
+}
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)//CAN1
 {
     CAN_RxHeaderTypeDef RxHeader;
     uint8_t RxData[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};  // Example data
     if(HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
     {
          HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_13);
-         CAN1_CAN2_broadcast(RxHeader.StdId, RxData, RxHeader.DLC);// StdId = 0x150
-         CAN1_CAN2_individ(RxHeader.StdId, RxData, RxHeader.DLC);// (can_id >= 0x160 && can_id <= 0x18F)
-         CAN1_CAN2_current(RxHeader.StdId, RxData, RxHeader.DLC);// (can_id >= 0x160 && can_id <= 0x18F)
+         hartbeat = hartbeat - 1; //установлена связь с головой
+         if (hartbeat < 0)
+         {
+        	 hartbeat = 0;
+         }
+         CAN1_current_rx(RxHeader.StdId, RxData, RxHeader.DLC, &current);
+         //CAN1_CAN2_broadcast(RxHeader.StdId, RxData, RxHeader.DLC);// StdId = 0x150
+         //CAN1_CAN2_individ(RxHeader.StdId, RxData, RxHeader.DLC);// (can_id >= 0x160 && can_id <= 0x18F)
+         //CAN1_CAN2_current(RxHeader.StdId, RxData, RxHeader.DLC);// (can_id >= 0x160 && can_id <= 0x18F)
+
     }
 }
-void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)//CAN2
 {
     CAN_RxHeaderTypeDef RxHeader;
     uint8_t RxData[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};  // Example data
     if(HAL_CAN_GetRxMessage(&hcan2, CAN_RX_FIFO1, &RxHeader, RxData) == HAL_OK)
     {
         HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_14);
+        CAN2_current_rx(RxHeader.ExtId, RxData, RxHeader.DLC, &current);
     }
 }
 //https://www.waveshare.com/wiki/STM32CubeMX_Tutorial_Series:_USART
@@ -233,6 +410,26 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
   }
 }
+//20Hhz = 64000000HZ / ((63999+1) * 50)
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+        if(htim->Instance == TIM2) //check if the interrupt comes from TIM1
+        {
+        	HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_15);
+
+        	//printf("\n\r Таймер Tim2\n\r");
+        	CAN2_current_tx(&current);
+        	CAN1_current_tx(&current);
+        	hartbeat = hartbeat + 1;
+			if (hartbeat > 50)//пропала связь с головой
+			 {
+				CAN2_broadcast_stop_all();
+				hartbeat = 0;
+				HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_14);
+				HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_13);
+			 }
+        }
+}
 /* USER CODE END 0 */
 
 /**
@@ -267,15 +464,14 @@ int main(void)
   MX_CAN1_Init();
   MX_CAN2_Init();
   MX_USART3_UART_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  //const char *message = "Hello, UART!\n";
-
-  // Отправка сообщения через UART3
-  //HAL_UART_Transmit(&huart3, (uint8_t *)message, strlen(message), HAL_MAX_DELAY);
-
-
+  HAL_TIM_Base_Start_IT(&htim2);
+  //инициализация
+  initValueStruct(&current);
+  hartbeat = 0;
   printf("\n\r !UART Printf Example: retarget the C library printf function to the UART\n\r");
-  printf("\n\r Работает\n\r");
+  printf("\n\r Работает");
   /* USER CODE END 2 */
 
   /* Infinite loop */
